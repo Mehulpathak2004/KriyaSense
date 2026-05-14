@@ -1,7 +1,8 @@
 import axios from 'axios';
 
+const isProduction = import.meta.env.PROD;
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: isProduction ? 'https://api.kriyanto.com' : '/api',
   headers: {
     'Content-Type': 'application/json',
   },

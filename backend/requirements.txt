@@ -6,9 +6,10 @@ motor
 pydantic
 python-dotenv
 slowapi
-openai-whisper
+httpx
 python-multipart
 passlib[bcrypt]
 python-jose[cryptography]
-celery
-redis
+numpy
+pandas
+scikit-learn

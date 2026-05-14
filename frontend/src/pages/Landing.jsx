@@ -266,16 +266,16 @@ const Landing = () => {
               </button>
             </div>
             
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-[10px] font-bold uppercase tracking-wider">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-brand-primary)]/10 border border-[var(--color-brand-primary)]/20 rounded-xl text-[var(--color-brand-primary)] text-[10px] font-bold uppercase tracking-wider">
               {selectedModel === 'kriyasense' ? (
                 <>
-                  <Activity className="w-3 h-3" />
-                  Powered by KriyaEmo Engine
+                  <Sparkles className="w-3 h-3" />
+                  Advanced Contextual Intelligence
                 </>
               ) : (
                 <>
-                  <AlertTriangle className="w-3 h-3" />
-                  Beta Phase: Accuracy ~74%
+                  <Activity className="w-3 h-3" />
+                  Neural Sentiment Engine v2.1
                 </>
               )}
             </div>

@@ -12,7 +12,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://31.97.68.215:8000', // Change this to your VPS IP
         changeOrigin: true,
       }
     }

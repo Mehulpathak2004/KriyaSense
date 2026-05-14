@@ -76,7 +76,7 @@ const ApiDocs = () => {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
         <h1 className="text-4xl font-space font-bold mb-4">API Documentation</h1>
         <p className="text-gray-400">
-          Integrate KriyaSense's dual-model sentiment and emotion analysis directly into your applications using our REST API. Base URL: <code className="bg-white/10 px-2 py-1 rounded text-white">http://localhost:8000</code>
+          Integrate KriyaSense's dual-model sentiment and emotion analysis directly into your applications using our REST API. Base URL: <code className="bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-primary)] px-2 py-1 rounded">{window.location.origin}/api</code>
         </p>
       </motion.div>
 

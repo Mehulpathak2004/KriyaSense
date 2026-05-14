@@ -20,7 +20,6 @@ export const analyzeText = async (text, sessionId, model = 'kriyacore') => {
   return response.data;
 };
 
-/*
 export const analyzeAudio = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -31,7 +30,6 @@ export const analyzeAudio = async (file) => {
   });
   return response.data;
 };
-*/
 
 export const reportPrediction = async (data) => {
   const response = await api.post('/report', data);

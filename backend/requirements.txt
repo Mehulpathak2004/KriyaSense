@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+transformers
+torch
+motor
+pydantic
+python-dotenv
+slowapi
+openai-whisper
+python-multipart
+passlib[bcrypt]
+python-jose[cryptography]
+celery
+redis

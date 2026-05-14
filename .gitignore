@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+.pytest_cache/
+backend/temp_audio/
+
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Models & Heavy Assets (Weights)
+model/
+emoModel/
+*.bin
+*.pt
+*.pth
+*.h5
+
+# Temporary/Waste Files
+waste/
+.ipynb_checkpoints/
+*.ipynb
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

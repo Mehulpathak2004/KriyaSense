@@ -1,0 +1,32 @@
+id,review_text,category,predicted_sentiment,sentiment_positive,sentiment_negative,sentiment_neutral,predicted_emotions
+1,I absolutely love this new product! It works perfectly and has saved me so much time.,Electronics,positive,97.6,0.9,1.5,love
+2,This is the worst service I have ever experienced. They were rude and extremely unhelpful.,Support,negative,0.4,98.3,1.4,disgust
+3,The package arrived on time and the item was exactly as described. Standard service.,Shipping,neutral,19.4,33.8,46.8,neutral
+4,I feel so happy and excited about my purchase. Highly recommend it to everyone!,General,positive,99.2,0.2,0.6,joy
+5,The product broke within two days of normal use. I am extremely disappointed.,Electronics,negative,0.9,97.1,2.0,sadness
+6,It is okay I guess. Nothing special but gets the basic job done.,General,neutral,6.7,19.5,73.8,approval
+7,I was so scared when the device started overheating. I turned it off immediately.,Electronics,negative,4.6,71.8,23.6,fear
+8,This customer support team deserves a medal! They resolved my complex issue in five minutes.,Support,neutral,32.7,28.4,38.9,admiration
+9,The shipping fee is too high for such a slow delivery. I will think twice before ordering again.,Shipping,neutral,12.6,42.4,45.0,neutral
+10,I was feeling a bit down today but trying out this new interface put a smile on my face.,General,neutral,16.7,26.7,56.7,joy
+11,The software keeps crashing every time I try to import my files. I am frustrated.,Software,negative,6.1,73.7,20.2,disappointment
+12,I received a completely different color than what I ordered. Very annoying.,Shipping,negative,0.8,94.9,4.3,annoyance
+13,"The quality is average. You get what you pay for, not premium but not terrible.",General,negative,5.2,78.8,15.9,admiration
+14,This book is a masterpiece. The plot is captivating and the characters are so deep.,Books,neutral,28.1,17.2,54.7,admiration
+15,The food at the restaurant was tasteless and cold. I will never eat there again.,Food,negative,6.1,65.8,28.2,disappointment
+16,It works as advertised. I don't have any major complaints or praise.,General,neutral,8.3,41.0,50.7,approval
+17,I am so angry that they charged my card twice and are refusing to refund me!,Support,negative,5.9,68.4,25.7,anger
+18,I am genuinely surprised by how good this sounds. The audio quality is crystal clear.,Electronics,positive,40.1,20.6,39.3,surprise
+19,I lost all my unsaved progress because the application auto-closed. This is awful!,Software,negative,1.3,96.2,2.5,disgust
+20,I had a wonderful time celebrating my birthday at this venue. Great memories!,General,positive,94.6,0.6,4.7,admiration
+21,The instructions are very confusing and hard to follow. I am still trying to figure it out.,Books,negative,2.6,79.8,17.5,confusion
+22,Simple setup process and extremely intuitive layout. Kudos to the designers!,Software,positive,97.7,0.7,1.5,admiration
+23,The battery life is incredibly short. It barely lasts three hours on a full charge.,Electronics,negative,7.6,52.8,39.6,neutral
+24,I was anxious about the interview but reading this guide gave me a lot of confidence.,Books,neutral,28.6,8.7,62.7,joy
+25,Just another generic coffee shop. Nothing stands out about the flavor or atmosphere.,Food,neutral,12.4,42.1,45.6,neutral
+26,This is pure gold! It has everything I was looking for and more.,General,positive,85.1,3.7,11.2,admiration
+27,The movie was so boring that I fell asleep halfway through. Total waste of money.,General,negative,2.4,88.4,9.2,disappointment
+28,I am so grateful for the generous discount they offered me on renewal.,Support,positive,37.5,28.4,34.1,gratitude
+29,The delivery person left my fragile package out in the rain. Thankfully it wasn't ruined.,Shipping,negative,11.3,50.2,38.5,gratitude
+30,It's fine. It does what it is supposed to do without any issues.,Electronics,negative,7.6,54.6,37.8,approval
+31,Wow! The speed of this tool is mind-blowing. Super fast processing.,Software,positive,72.7,6.4,20.9,admiration

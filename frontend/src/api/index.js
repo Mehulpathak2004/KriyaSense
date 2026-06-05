@@ -74,8 +74,14 @@ export const resetPassword = async (email, otp, new_password) => {
   return response.data;
 };
 
-export const registerUser = async (username, password, email, otp) => {
-  const response = await api.post('/auth/register', { username, password, email, otp });
+export const registerUser = async (username, password, email, otp, companyProfile = {}) => {
+  const response = await api.post('/auth/register', { 
+    username, password, email, otp,
+    company_name: companyProfile.company_name || null,
+    industry: companyProfile.industry || null,
+    company_size: companyProfile.company_size || null,
+    use_case: companyProfile.use_case || null
+  });
   return response.data;
 };
 
@@ -89,6 +95,13 @@ export const logoutUser = () => {
   localStorage.removeItem('role');
   localStorage.removeItem('is_blocked');
   localStorage.removeItem('block_message');
+};
+
+// --- MODEL HEALTH ---
+
+export const checkModelHealth = async () => {
+  const response = await api.get('/health/models');
+  return response.data;
 };
 
 // --- DEVELOPER API ---
@@ -125,6 +138,11 @@ export const deleteUser = async (userId) => {
   return response.data;
 };
 
+export const updateUserDailyLimit = async (userId, limit) => {
+  const response = await api.put(`/tbxadmin/users/${userId}/limit?limit=${limit}`);
+  return response.data;
+};
+
 export const fetchAdminReports = async () => {
   const response = await api.get('/tbxadmin/reports');
   return response.data;
@@ -154,3 +172,55 @@ export const updateAdminSettings = async (kriyasense_v1_url) => {
   const response = await api.post('/tbxadmin/settings', { kriyasense_v1_url });
   return response.data;
 };
+
+export const fetchRecentActivity = async () => {
+  const response = await api.get('/tbxadmin/recent-activity');
+  return response.data;
+};
+
+// --- CSV BATCH PREDICTION API ---
+
+export const uploadCsv = async (file, onProgress) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/csv/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: onProgress
+      ? (e) => onProgress(Math.round((e.loaded * 100) / e.total))
+      : undefined,
+  });
+  return response.data;
+};
+
+export const previewCsvColumn = async (jobId, column) => {
+  const response = await api.get(`/csv/${jobId}/preview?column=${encodeURIComponent(column)}`);
+  return response.data;
+};
+
+export const startCsvPrediction = async (jobId, column, model = 'kriyacore') => {
+  const response = await api.post(`/csv/${jobId}/predict`, { column, model });
+  return response.data;
+};
+
+export const getCsvJobStatus = async (jobId) => {
+  const response = await api.get(`/csv/${jobId}/status`);
+  return response.data;
+};
+
+export const downloadCsvResult = async (jobId) => {
+  const response = await api.get(`/csv/${jobId}/download`, {
+    responseType: 'blob',
+  });
+  return response;
+};
+
+export const fetchCsvHistory = async () => {
+  const response = await api.get('/csv/history');
+  return response.data;
+};
+
+export const fetchAdminCsvJobs = async () => {
+  const response = await api.get('/tbxadmin/csv-jobs');
+  return response.data;
+};
+

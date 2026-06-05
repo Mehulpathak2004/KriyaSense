@@ -104,6 +104,43 @@ def send_contact_reply(to_email: str, admin_reply: str, original_message: str):
     """
     return send_email(to_email, subject, html_content)
 
+def send_csv_job_complete(to_email: str, username: str, filename: str, processed_rows: int, error_rows: int, status: str):
+    is_success = status == "completed"
+    subject = f"CSV Batch Job {'Completed' if is_success else 'Failed'} — KriyaSense"
+    status_color = "#10b981" if is_success else "#ef4444"
+    status_text = "Completed Successfully" if is_success else "Failed"
+    html_content = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: {status_color};">CSV Batch Prediction {status_text}</h2>
+        <p>Hi {username},</p>
+        <p>Your batch prediction job has {status_text.lower()}.</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #eee; color: #666;">File</td><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">{filename}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #eee; color: #666;">Rows Processed</td><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">{processed_rows}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #eee; color: #666;">Errors</td><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold; color: {'#ef4444' if error_rows > 0 else '#10b981'};">{error_rows}</td></tr>
+        </table>
+        <p>Log in to your dashboard to download the results. Output files are available for <strong>24 hours</strong>.</p>
+        <p>Thanks,<br/>The KriyaSense Team</p>
+    </div>
+    """
+    return send_email(to_email, subject, html_content)
+
+def send_csv_job_failed(to_email: str, username: str, filename: str, error_message: str):
+    subject = "CSV Batch Job Failed — KriyaSense"
+    html_content = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #ef4444;">CSV Batch Prediction Failed</h2>
+        <p>Hi {username},</p>
+        <p>Unfortunately, your batch prediction job for <strong>{filename}</strong> has failed.</p>
+        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin: 16px 0;">
+            <strong style="color: #ef4444;">Error:</strong> <span style="color: #991b1b;">{error_message}</span>
+        </div>
+        <p>Please check your CSV file and try again. If the issue persists, contact our support team.</p>
+        <p>Thanks,<br/>The KriyaSense Team</p>
+    </div>
+    """
+    return send_email(to_email, subject, html_content)
+
 def send_password_reset_email(to_email: str, otp: str):
     subject = "Reset your KriyaSense Password"
     html_content = f"""

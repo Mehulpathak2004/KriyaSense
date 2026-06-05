@@ -15,6 +15,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import UserDashboard from './pages/UserDashboard';
+import BatchPredict from './pages/BatchPredict';
 
 // Admin Pages
 import AdminLayout from './pages/admin/AdminLayout';
@@ -22,6 +23,7 @@ import AdminOverview from './pages/admin/AdminOverview';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminReports from './pages/admin/AdminReports';
 import AdminMessages from './pages/admin/AdminMessages';
+import AdminCsvJobs from './pages/admin/AdminCsvJobs';
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
@@ -48,6 +50,7 @@ const AnimatedRoutes = () => {
           <Route path="users" element={<AdminUsers />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="messages" element={<AdminMessages />} />
+          <Route path="csv-jobs" element={<AdminCsvJobs />} />
         </Route>
       </Routes>
     );
@@ -69,6 +72,11 @@ const AnimatedRoutes = () => {
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><UserDashboard /></motion.div>
+          </ProtectedRoute>
+        } />
+        <Route path="/batch-predict" element={
+          <ProtectedRoute>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><BatchPredict /></motion.div>
           </ProtectedRoute>
         } />
       </Routes>

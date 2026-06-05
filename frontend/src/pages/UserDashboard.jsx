@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Key, Activity, Copy, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Key, Activity, Copy, CheckCircle2, AlertTriangle, FileSpreadsheet, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { fetchCurrentUser, generateApiKey } from '../api';
 
 const UserDashboard = () => {
@@ -123,7 +124,37 @@ const UserDashboard = () => {
             </div>
           </div>
         </div>
+
+        <div className="bg-[var(--color-surface-1)] border border-white/10 rounded-2xl p-6">
+           <div className="flex items-center gap-4">
+            <div className="p-3 bg-cyan-500/10 rounded-xl">
+              <FileSpreadsheet className="w-6 h-6 text-cyan-400" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-400 font-medium">CSV Batch Jobs</p>
+              <h3 className="text-2xl font-bold text-white">{userData?.total_csv_uploads || 0}</h3>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Batch Predict CTA */}
+      <Link to="/batch-predict" className="block mb-10">
+        <div className="bg-gradient-to-r from-[var(--color-brand-primary)]/10 to-cyan-500/10 border border-[var(--color-brand-primary)]/20 rounded-2xl p-6 hover:border-[var(--color-brand-primary)]/40 transition-all group cursor-pointer">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-[var(--color-brand-primary)]/20 rounded-xl">
+                <FileSpreadsheet className="w-6 h-6 text-[var(--color-brand-primary)]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Batch Predict</h3>
+                <p className="text-sm text-gray-400">Upload a CSV file and get sentiment & emotion predictions for every row.</p>
+              </div>
+            </div>
+            <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-[var(--color-brand-primary)] group-hover:translate-x-1 transition-all" />
+          </div>
+        </div>
+      </Link>
 
       <div className="bg-[var(--color-surface-1)] border border-white/10 rounded-3xl p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">

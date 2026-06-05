@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowRight, Mic, AlertTriangle, Activity, Mail, CheckCircle2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
-import { analyzeText, analyzeAudio, submitContact } from '../api';
+import { Loader2, ArrowRight, Mic, AlertTriangle, Activity, Mail, CheckCircle2, ChevronDown, ChevronUp, Sparkles, MessageSquare, TrendingUp, Search, Heart, ShoppingBag, Building2 } from 'lucide-react';
+import { analyzeText, analyzeAudio, submitContact, checkModelHealth } from '../api';
 import SentimentGauges from '../components/SentimentGauges';
 import EmotionChips from '../components/EmotionChips';
 import HeroSentiment from '../components/HeroSentiment';
@@ -59,6 +59,7 @@ const Landing = () => {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [sessionId] = useState(() => crypto.randomUUID());
   const [selectedModel, setSelectedModel] = useState('kriyacore'); // 'kriyacore' or 'kriyasense'
+  const [llmAvailable, setLlmAvailable] = useState(false);
 
   // Contact form state
   const [formData, setFormData] = useState({ name: '', email: '', subject: 'General Inquiry', message: '' });
@@ -83,6 +84,10 @@ const Landing = () => {
     }
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    checkModelHealth().then(h => setLlmAvailable(h.kriyasense)).catch(() => setLlmAvailable(false));
   }, []);
 
   const handleAnalyzeText = async () => {
@@ -259,10 +264,13 @@ const Landing = () => {
                 KriyaCore (Standard)
               </button>
               <button 
-                onClick={() => { setSelectedModel('kriyasense'); setResult(null); setError(null); }}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${selectedModel === 'kriyasense' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'text-gray-400 hover:text-gray-200'}`}
+                onClick={() => { if (llmAvailable) { setSelectedModel('kriyasense'); setResult(null); setError(null); } }}
+                disabled={!llmAvailable}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${selectedModel === 'kriyasense' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : !llmAvailable ? 'text-gray-600 cursor-not-allowed opacity-50' : 'text-gray-400 hover:text-gray-200'}`}
+                title={!llmAvailable ? 'LLM service is currently offline' : ''}
               >
                 <Sparkles className="w-3 h-3" /> KriyaSense-V1 (Pro)
+                {!llmAvailable && <span className="text-[9px] ml-1 bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">Offline</span>}
               </button>
             </div>
             
@@ -537,18 +545,62 @@ const Landing = () => {
           <h2 className="text-4xl font-space font-bold mb-4">Use Cases</h2>
           <p className="text-gray-400">How KriyaSense transforms industries.</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[
-            { title: "Customer Support", desc: "Automatically route angry or frustrated tickets to senior agents for faster resolution." },
-            { title: "Brand Monitoring", desc: "Track how your audience feels about a new product launch in real-time." },
-            { title: "Mental Health", desc: "Detect nuanced signs of anxiety or distress in digital journal entries." },
-            { title: "Market Research", desc: "Analyze open-ended survey responses to extract deep qualitative insights." }
-          ].map((uc, i) => (
-            <motion.div key={i} whileHover={{ y: -5 }} className="bg-[var(--color-surface-1)] p-6 rounded-2xl border border-white/10">
-              <h4 className="text-lg font-bold text-white mb-2">{uc.title}</h4>
-              <p className="text-sm text-gray-400">{uc.desc}</p>
-            </motion.div>
-          ))}
+            { 
+              title: "Customer Support", 
+              desc: "Instantly detect user anger, frustration, or disappointment in live chats and tickets. Automatically escalate high-priority issues to senior agents and suggest empathetic responses based on the customer's exact emotional state to decrease churn and improve resolution time.",
+              icon: MessageSquare,
+              color: "text-blue-400 bg-blue-500/10 border-blue-500/20"
+            },
+            { 
+              title: "Brand Monitoring", 
+              desc: "Track how your audience feels about a new product launch, marketing campaign, or press release across social media channels in real-time. Spot shifting sentiment trends early to handle PR situations proactively and refine marketing copy on the fly.",
+              icon: TrendingUp,
+              color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+            },
+            { 
+              title: "Market Research", 
+              desc: "Process thousands of open-ended survey responses, focus group feedback, and competitor reviews. Extract deep qualitative themes and emotional patterns without manual reading, turning unstructured text into structured, actionable product feature requests.",
+              icon: Search,
+              color: "text-purple-400 bg-purple-500/10 border-purple-500/20"
+            },
+            { 
+              title: "Mental Health", 
+              desc: "Detect nuanced signs of anxiety, distress, sadness, or fatigue in digital journal entries, messaging transcripts, or support channels. Empower healthcare providers and wellness apps to trigger timely intervention, support resources, or alerts.",
+              icon: Heart,
+              color: "text-rose-400 bg-rose-500/10 border-rose-500/20"
+            },
+            { 
+              title: "Retail & E-Commerce", 
+              desc: "Analyze product reviews, return comments, and buying feedback. Instantly understand which items cause frustration (e.g., sizing issues, material defects) or high satisfaction. Tailor recommendation engines and retention offers dynamically to convert unhappy shoppers into loyal customers.",
+              icon: ShoppingBag,
+              color: "text-amber-400 bg-amber-500/10 border-amber-500/20"
+            },
+            { 
+              title: "SM Businesses (SMBs)", 
+              desc: "Empower small and medium businesses to compete with enterprise giants. Monitor local reviews (like Google Maps, Yelp) and customer emails automatically. Send daily summaries of customer satisfaction, identify repeat issues, and suggest quick recovery actions to build community trust.",
+              icon: Building2,
+              color: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20"
+            }
+          ].map((uc, i) => {
+            const Icon = uc.icon;
+            return (
+              <motion.div 
+                key={i} 
+                whileHover={{ y: -6, scale: 1.02 }} 
+                className="bg-gradient-to-br from-[var(--color-surface-1)] to-white/[0.02] p-8 rounded-3xl border border-white/10 hover:border-white/20 transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center border mb-6 ${uc.color}`}>
+                    <Icon className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-xl font-bold text-white mb-4 font-space">{uc.title}</h4>
+                  <p className="text-sm text-gray-400 leading-relaxed">{uc.desc}</p>
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       </section>
 
@@ -568,7 +620,7 @@ const Landing = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Email Us</p>
-                  <p className="text-white font-medium">Anurag.pareek07@gmail.com</p>
+                  <p className="text-white font-medium">anurag.pareek@trailblazex.com</p>
                 </div>
               </div>
             </div>

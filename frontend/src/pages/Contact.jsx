@@ -72,7 +72,7 @@ const Contact = () => {
               <div className="p-3 bg-[var(--color-surface-2)] rounded-full border border-white/10">
                 <Mail className="w-6 h-6 text-[var(--color-brand-primary)]" />
               </div>
-              <span>hello@kriyasense.ai</span>
+              <span>anurag.pareek@trailblazex.com</span>
             </div>
           </div>
 

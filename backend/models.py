@@ -25,6 +25,10 @@ class UserCreate(BaseModel):
     password: str
     email: str
     otp: str
+    company_name: Optional[str] = None
+    industry: Optional[str] = None
+    company_size: Optional[str] = None
+    use_case: Optional[str] = None
 
 class SendOTPRequest(BaseModel):
     email: str

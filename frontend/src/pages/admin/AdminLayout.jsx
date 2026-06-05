@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, MessageSquare, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, AlertCircle, FileSpreadsheet } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const AdminLayout = () => {
@@ -11,6 +11,7 @@ const AdminLayout = () => {
     { name: 'Users & Analytics', path: '/admin/users', icon: Users },
     { name: 'Feedback Reports', path: '/admin/reports', icon: AlertCircle },
     { name: 'Contact Queries', path: '/admin/messages', icon: MessageSquare },
+    { name: 'CSV Jobs', path: '/admin/csv-jobs', icon: FileSpreadsheet },
   ];
 
   return (

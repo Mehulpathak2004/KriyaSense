@@ -19,6 +19,7 @@ const Navbar = () => {
     if (user.role === 'admin') {
       baseLinks.push({ name: 'Admin Dashboard', path: '/admin' });
     } else {
+      baseLinks.push({ name: 'Batch Predict', path: '/batch-predict' });
       baseLinks.push({ name: 'Dashboard', path: '/dashboard' });
     }
   }

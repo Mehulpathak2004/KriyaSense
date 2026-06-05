@@ -140,6 +140,12 @@ async def _process_csv_job(job_id: str):
         return
 
     column = job["selected_column"]
+    model_name = job.get("model", "kriyacore")
+    company_name = user.get("company_name") if user else None
+    industry = user.get("industry") if user else None
+    company_size = user.get("company_size") if user else None
+    use_case = user.get("use_case") if user else None
+
     processed_rows = 0
     error_rows = 0
     error_details = []
@@ -160,6 +166,9 @@ async def _process_csv_job(job_id: str):
     total_priority_score = 0.0
     total_points = 0
     candidates = []
+
+    total_rows = len(df)
+    update_interval = max(1, total_rows // 20)
 
     for idx, row in df.iterrows():
         text = row.get(column)
@@ -196,7 +205,74 @@ async def _process_csv_job(job_id: str):
             continue
 
         try:
-            result = await run_inference(text)
+            if model_name == "kriyasense":
+                settings = await db.settings.find_one({"key": "kriyasense_v1_url"})
+                qwen_url = settings["value"] if settings and settings.get("value") else None
+                if not qwen_url:
+                    raise Exception("KriyaSense-V1 URL not configured")
+                if not qwen_url.startswith("http"):
+                    qwen_url = f"https://{qwen_url}"
+                qwen_url = qwen_url.strip()
+                
+                async with httpx.AsyncClient() as client:
+                    headers = {
+                        "ngrok-skip-browser-warning": "true",
+                        "User-Agent": "KriyaSense-App/1.0"
+                    }
+                    payload = {
+                        "text": text,
+                        "company_name": company_name,
+                        "industry": industry,
+                        "company_size": company_size,
+                        "use_case": use_case
+                    }
+                    
+                    response = await client.post(qwen_url, json=payload, headers=headers, timeout=20.0)
+                    
+                    if response.status_code in [404, 405] and not qwen_url.endswith("/predict") and not qwen_url.endswith("/analyze"):
+                        retry_url = f"{qwen_url.rstrip('/')}/predict"
+                        try:
+                            retry_response = await client.post(retry_url, json=payload, headers=headers, timeout=10.0)
+                            if retry_response.status_code == 200:
+                                response = retry_response
+                        except:
+                            pass
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"Colab API returned status {response.status_code}")
+                        
+                    sentiment_text = "neutral"
+                    try:
+                        data = response.json()
+                        if isinstance(data, dict):
+                            raw_val = data.get("sentiment") or data.get("label") or data.get("result") or data.get("prediction") or str(data)
+                            sentiment_text = raw_val.lower()
+                        else:
+                            sentiment_text = str(data).lower()
+                    except:
+                        sentiment_text = response.text.lower()
+                    
+                    if any(word in sentiment_text for word in ["positive", "happy", "joy", "good"]):
+                        final_sentiment = "positive"
+                    elif any(word in sentiment_text for word in ["negative", "sad", "angry", "bad", "hate"]):
+                        final_sentiment = "negative"
+                    else:
+                        final_sentiment = "neutral"
+                    
+                    loop = asyncio.get_event_loop()
+                    emotions = await loop.run_in_executor(None, predict_emotions, text)
+                    
+                    result = {
+                        "sentiment": {
+                            "positive": 100 if final_sentiment == "positive" else 0,
+                            "negative": 100 if final_sentiment == "negative" else 0,
+                            "neutral": 100 if final_sentiment == "neutral" else 0
+                        },
+                        "emotions": emotions,
+                        "dominant_sentiment": final_sentiment
+                    }
+            else:
+                result = await run_inference(text)
             sentiment_label = result["dominant_sentiment"]
             emotions = result["emotions"]
             
@@ -290,8 +366,8 @@ async def _process_csv_job(job_id: str):
             urgency_levels.append("Low")
             recommended_offers.append("Error in analysis")
 
-        # Update progress every 50 rows
-        if (idx + 1) % 50 == 0:
+        # Update progress dynamically based on file size
+        if (idx + 1) % update_interval == 0:
             await db.csv_jobs.update_one(
                 {"_id": ObjectId(job_id)},
                 {"$set": {"processed_rows": processed_rows, "error_rows": error_rows}}
@@ -422,10 +498,20 @@ async def analyze_text(request: Request, body: AnalyzeRequest, optional_user: st
         if not qwen_url.startswith("http"):
             qwen_url = f"https://{qwen_url}"
         
-        # We'll use the URL as provided, but if it doesn't contain a path, 
-        # we might want to suggest /predict as a default if it fails.
-        # For now, let's keep it as is but ensure it's clean.
         qwen_url = qwen_url.strip()
+        
+        # Get company context if optional_user is provided
+        company_name = None
+        industry = None
+        company_size = None
+        use_case = None
+        if optional_user:
+            user_doc = await db.users.find_one({"username": optional_user})
+            if user_doc:
+                company_name = user_doc.get("company_name")
+                industry = user_doc.get("industry")
+                company_size = user_doc.get("company_size")
+                use_case = user_doc.get("use_case")
             
         try:
             async with httpx.AsyncClient() as client:
@@ -434,14 +520,22 @@ async def analyze_text(request: Request, body: AnalyzeRequest, optional_user: st
                     "User-Agent": "KriyaSense-App/1.0"
                 }
                 
+                payload = {
+                    "text": clean_text,
+                    "company_name": company_name,
+                    "industry": industry,
+                    "company_size": company_size,
+                    "use_case": use_case
+                }
+                
                 # Try the URL as provided first
-                response = await client.post(qwen_url, json={"text": clean_text}, headers=headers, timeout=30.0)
+                response = await client.post(qwen_url, json=payload, headers=headers, timeout=30.0)
                 
                 # Smart Retry: If root fails with 404 or 405, try common Colab sub-paths
                 if response.status_code in [404, 405] and not qwen_url.endswith("/predict") and not qwen_url.endswith("/analyze"):
                     retry_url = f"{qwen_url.rstrip('/')}/predict"
                     try:
-                        retry_response = await client.post(retry_url, json={"text": clean_text}, headers=headers, timeout=15.0)
+                        retry_response = await client.post(retry_url, json=payload, headers=headers, timeout=15.0)
                         if retry_response.status_code == 200:
                             response = retry_response
                             qwen_url = retry_url # Update for logs
@@ -537,6 +631,34 @@ async def analyze_text(request: Request, body: AnalyzeRequest, optional_user: st
 #         if os.path.exists(file_path):
 #             os.remove(file_path)
 
+# --- MODEL HEALTH CHECK ---
+
+@app.get("/api/health/models")
+async def check_model_health():
+    """Check availability of all analysis models."""
+    db = get_db()
+    kriyasense_available = False
+    try:
+        settings = await db.settings.find_one({"key": "kriyasense_v1_url"})
+        colab_url = settings.get("value", "") if settings else ""
+        if colab_url:
+            if not colab_url.startswith("http"):
+                colab_url = f"https://{colab_url}"
+            colab_url = colab_url.strip()
+            
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                headers = {
+                    "ngrok-skip-browser-warning": "true",
+                    "User-Agent": "KriyaSense-App/1.0"
+                }
+                resp = await client.get(colab_url, headers=headers)
+                kriyasense_available = resp.status_code == 200
+    except Exception as e:
+        print(f"[Health Check] Error checking kriyasense: {e}")
+        kriyasense_available = False
+    return {"kriyacore": True, "kriyasense": kriyasense_available}
+
 # --- AUTH & USER ENDPOINTS ---
 
 @app.post("/api/auth/send-otp")
@@ -574,9 +696,14 @@ async def register(user: UserCreate):
         "api_keys": [],
         "total_api_calls": 0,
         "daily_api_calls": {},
+        "daily_limit": 30,
         "is_blocked": False,
         "block_message": None,
-        "last_api_call": None
+        "last_api_call": None,
+        "company_name": user.company_name,
+        "industry": user.industry,
+        "company_size": user.company_size,
+        "use_case": user.use_case
     }
     await db.users.insert_one(user_doc)
     await db.otps.delete_one({"_id": otp_doc["_id"]})
@@ -701,8 +828,9 @@ async def dev_analyze(request: Request, body: DevAnalyzeRequest):
     today = now.strftime("%Y-%m-%d")
     daily_calls = user.get("daily_api_calls", {}).get(today, 0)
     
-    if daily_calls >= 30:
-        raise HTTPException(status_code=429, detail="Daily free API limit reached (30/30)")
+    if daily_calls >= user.get("daily_limit", 30):
+        daily_limit = user.get("daily_limit", 30)
+        raise HTTPException(status_code=429, detail=f"Daily free API limit reached ({daily_limit}/{daily_limit})")
         
     if len(body.text) > 2000:
         raise HTTPException(status_code=400, detail="Text exceeds maximum length of 2000 characters")
@@ -967,6 +1095,31 @@ async def update_admin_settings(body: SettingsUpdate, admin: dict = Depends(veri
     )
     return {"success": True}
 
+@app.put("/api/tbxadmin/users/{user_id}/limit")
+async def update_user_daily_limit(user_id: str, admin: dict = Depends(verify_admin), limit: int = 30):
+    db = get_db()
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"daily_limit": limit}}
+    )
+    return {"success": True, "new_limit": limit}
+
+@app.get("/api/tbxadmin/recent-activity")
+async def get_recent_activity(admin: dict = Depends(verify_admin)):
+    db = get_db()
+    activities = []
+    async for pred in db.predictions.find({"is_api_request": True}).sort("timestamp", -1).limit(10):
+        pred["_id"] = str(pred["_id"])
+        # Find username from api_key
+        if pred.get("api_key"):
+            user = await db.users.find_one({"api_keys": pred["api_key"]}, {"username": 1, "email": 1})
+            pred["user_info"] = {"username": user.get("username", "unknown"), "email": user.get("email", "")} if user else None
+        activities.append(pred)
+    return activities
+
 # --- CSV BATCH PREDICTION ENDPOINTS ---
 
 @app.post("/api/csv/upload")
@@ -1133,10 +1286,10 @@ async def csv_predict(job_id: str, request: Request, token_payload: dict = Depen
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to validate column: {str(e)[:100]}")
     
-    # Update job with selected column and queue it
+    # Update job with selected column, model, and queue it
     await db.csv_jobs.update_one(
         {"_id": ObjectId(job_id)},
-        {"$set": {"selected_column": column, "status": "queued"}}
+        {"$set": {"selected_column": column, "model": body.get("model", "kriyacore"), "status": "queued"}}
     )
     
     # Add to processing queue

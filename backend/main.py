@@ -1,11 +1,17 @@
 import re
 import os
+import csv
+import io
 import uuid
 import shutil
 import random
+import asyncio
+import json
+import pandas as pd
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, FileResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -13,14 +19,25 @@ from bson import ObjectId
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 import httpx
-import json
 
 from database import connect_to_mongo, close_mongo_connection, get_db
 from inference import load_models, run_inference, predict_emotions #, transcribe_audio
 from models import AnalyzeRequest, ReportRequest, ContactRequest, UserCreate, UserLogin, DevAnalyzeRequest, SendOTPRequest, BlockUserRequest, AdminReplyRequest, ForgotPasswordRequest, ResetPasswordRequest, SettingsUpdate
 from auth import get_password_hash, verify_password, create_access_token, get_current_user_token, SECRET_KEY, ALGORITHM
 
-from email_service import send_otp_email, send_welcome_email, send_block_notice, send_unblock_notice, send_contact_reply, send_password_reset_email
+from email_service import send_otp_email, send_welcome_email, send_block_notice, send_unblock_notice, send_contact_reply, send_password_reset_email, send_csv_job_complete, send_csv_job_failed
+
+# --- CSV Config ---
+CSV_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "csv_uploads")
+CSV_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "csv_outputs")
+MAX_CSV_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_CSV_ROWS = 5000
+DAILY_CSV_LIMIT = 5
+os.makedirs(CSV_UPLOAD_DIR, exist_ok=True)
+os.makedirs(CSV_OUTPUT_DIR, exist_ok=True)
+
+# --- CSV Job Queue ---
+csv_job_queue: asyncio.Queue = asyncio.Queue()
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="KriyaSense API")
@@ -29,7 +46,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "https://kriyasense.kriyanto.com",
+        "http://kriyasense.kriyanto.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,11 +72,330 @@ async def startup_event():
     await connect_to_mongo()
     db = get_db()
     await db.otps.create_index("createdAt", expireAfterSeconds=600)
+    try:
+        await db.csv_jobs.drop_index("expires_at_1")
+    except Exception:
+        pass
     load_models()
+    # Start background workers
+    asyncio.create_task(csv_queue_worker())
+    asyncio.create_task(csv_cleanup_task())
 
 @app.on_event("shutdown")
 async def shutdown_event():
     await close_mongo_connection()
+
+# --- CSV Background Queue Worker ---
+async def csv_queue_worker():
+    """Processes CSV prediction jobs from the asyncio queue."""
+    while True:
+        job_id = await csv_job_queue.get()
+        try:
+            await _process_csv_job(job_id)
+        except Exception as e:
+            print(f"[CSV Worker] Error processing job {job_id}: {e}")
+            db = get_db()
+            await db.csv_jobs.update_one(
+                {"_id": ObjectId(job_id)},
+                {"$set": {"status": "failed", "error_message": str(e)}}
+            )
+        finally:
+            csv_job_queue.task_done()
+
+async def _process_csv_job(job_id: str):
+    """Core logic for processing a single CSV prediction job."""
+    db = get_db()
+    job = await db.csv_jobs.find_one({"_id": ObjectId(job_id)})
+    if not job:
+        return
+
+    user = await db.users.find_one({"username": job["user"]})
+    user_email = user.get("email", "") if user else ""
+
+    # Update status to processing
+    await db.csv_jobs.update_one(
+        {"_id": ObjectId(job_id)},
+        {"$set": {"status": "processing"}}
+    )
+
+    input_path = os.path.join(CSV_UPLOAD_DIR, job["user"], job["stored_filename"])
+    if not os.path.exists(input_path):
+        await db.csv_jobs.update_one(
+            {"_id": ObjectId(job_id)},
+            {"$set": {"status": "failed", "error_message": "Input file not found on server"}}
+        )
+        if user_email:
+            send_csv_job_failed(user_email, job["user"], job["original_filename"], "Input file not found")
+        return
+
+    try:
+        df = pd.read_csv(input_path)
+    except Exception as e:
+        await db.csv_jobs.update_one(
+            {"_id": ObjectId(job_id)},
+            {"$set": {"status": "failed", "error_message": f"Failed to read CSV: {str(e)}"}}
+        )
+        if user_email:
+            send_csv_job_failed(user_email, job["user"], job["original_filename"], f"Failed to read CSV: {str(e)}")
+        return
+
+    column = job["selected_column"]
+    processed_rows = 0
+    error_rows = 0
+    error_details = []
+
+    sentiments = []
+    emotions_list = []
+    pos_scores = []
+    neg_scores = []
+    neu_scores = []
+
+    # Loyalty & Retention lists
+    priority_scores = []
+    urgency_levels = []
+    recommended_offers = []
+
+    sentiment_counts = {"positive": 0, "neutral": 0, "negative": 0}
+    urgency_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    total_priority_score = 0.0
+    total_points = 0
+    candidates = []
+
+    for idx, row in df.iterrows():
+        text = row.get(column)
+        # Handle empty/NaN cells
+        if pd.isna(text) or str(text).strip() == "":
+            error_rows += 1
+            if len(error_details) < 20:
+                error_details.append({"row": idx + 2, "error": "Empty or missing text"})
+            sentiments.append("")
+            emotions_list.append("")
+            pos_scores.append("")
+            neg_scores.append("")
+            neu_scores.append("")
+            priority_scores.append(0.0)
+            urgency_levels.append("Low")
+            recommended_offers.append("No text analyzed")
+            continue
+
+        text = str(text).strip()
+
+        # Skip very long text
+        if len(text) > 2000:
+            error_rows += 1
+            if len(error_details) < 20:
+                error_details.append({"row": idx + 2, "error": "Text exceeds 2000 characters"})
+            sentiments.append("")
+            emotions_list.append("")
+            pos_scores.append("")
+            neg_scores.append("")
+            neu_scores.append("")
+            priority_scores.append(0.0)
+            urgency_levels.append("Low")
+            recommended_offers.append("Text too long")
+            continue
+
+        try:
+            result = await run_inference(text)
+            sentiment_label = result["dominant_sentiment"]
+            emotions = result["emotions"]
+            
+            pos_score = result["sentiment"]["positive"]
+            neg_score = result["sentiment"]["negative"]
+            neu_score = result["sentiment"]["neutral"]
+            
+            def clean_score(val):
+                try:
+                    v = float(val)
+                    return v / 100.0 if v > 1.0 else v
+                except:
+                    return 0.0
+            
+            p_val = clean_score(pos_score)
+            n_val = clean_score(neg_score)
+            nu_val = clean_score(neu_score)
+            
+            # Loyalty Priority Score calculation
+            if sentiment_label == "negative":
+                base = n_val
+                boost = 0.0
+                for emo in emotions:
+                    emo_lower = emo.lower()
+                    if any(term in emo_lower for term in ["anger", "frustration", "disappointed", "disappointment", "annoyance", "disgust"]):
+                        boost += 0.20
+                    elif any(term in emo_lower for term in ["sadness", "fear"]):
+                        boost += 0.10
+                priority_score = min(0.99, base + boost)
+            elif sentiment_label == "neutral":
+                priority_score = nu_val * 0.3
+            else:
+                priority_score = p_val * 0.05
+            
+            priority_pct = round(priority_score * 100, 1)
+            
+            # Offer recommendations
+            if priority_pct >= 75:
+                urgency = "Critical"
+                offer = "Refund + 500 Loyalty Points (Immediate Outreach)"
+                pts = 500
+            elif priority_pct >= 50:
+                urgency = "High"
+                offer = "20% Discount Coupon + 200 Loyalty Points"
+                pts = 200
+            elif priority_pct >= 25:
+                urgency = "Medium"
+                offer = "10% Discount Coupon + 100 Loyalty Points"
+                pts = 100
+            else:
+                urgency = "Low"
+                offer = "Thank You Email + 10 Loyalty Points"
+                pts = 10
+            
+            priority_scores.append(priority_pct)
+            urgency_levels.append(urgency)
+            recommended_offers.append(offer)
+
+            sentiment_counts[sentiment_label] += 1
+            urgency_counts[urgency.lower()] += 1
+            total_priority_score += priority_pct
+            total_points += pts
+            
+            if sentiment_label == "negative" or urgency in ["Critical", "High"]:
+                candidates.append({
+                    "row": idx + 2,
+                    "text": text[:200] + ("..." if len(text) > 200 else ""),
+                    "sentiment": sentiment_label,
+                    "emotions": ", ".join(emotions),
+                    "score": priority_pct,
+                    "urgency": urgency,
+                    "offer": offer
+                })
+
+            sentiments.append(sentiment_label)
+            emotions_list.append(", ".join(emotions))
+            pos_scores.append(result["sentiment"]["positive"])
+            neg_scores.append(result["sentiment"]["negative"])
+            neu_scores.append(result["sentiment"]["neutral"])
+            processed_rows += 1
+        except Exception as e:
+            error_rows += 1
+            if len(error_details) < 20:
+                error_details.append({"row": idx + 2, "error": str(e)[:100]})
+            sentiments.append("")
+            emotions_list.append("")
+            pos_scores.append("")
+            neg_scores.append("")
+            neu_scores.append("")
+            priority_scores.append(0.0)
+            urgency_levels.append("Low")
+            recommended_offers.append("Error in analysis")
+
+        # Update progress every 50 rows
+        if (idx + 1) % 50 == 0:
+            await db.csv_jobs.update_one(
+                {"_id": ObjectId(job_id)},
+                {"$set": {"processed_rows": processed_rows, "error_rows": error_rows}}
+            )
+
+    # Build output DataFrame
+    df["predicted_sentiment"] = sentiments
+    df["sentiment_positive"] = pos_scores
+    df["sentiment_negative"] = neg_scores
+    df["sentiment_neutral"] = neu_scores
+    df["predicted_emotions"] = emotions_list
+    df["loyalty_priority_score"] = priority_scores
+    df["retention_urgency"] = urgency_levels
+    df["recommended_offer"] = recommended_offers
+
+    # Save output
+    user_output_dir = os.path.join(CSV_OUTPUT_DIR, job["user"])
+    os.makedirs(user_output_dir, exist_ok=True)
+    output_filename = f"{job['stored_filename'].replace('.csv', '')}_output.csv"
+    output_path = os.path.join(user_output_dir, output_filename)
+    df.to_csv(output_path, index=False)
+
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    top_candidates = candidates[:10]
+    avg_priority = round(total_priority_score / processed_rows, 1) if processed_rows > 0 else 0.0
+
+    analytics_summary = {
+        "sentiment_distribution": sentiment_counts,
+        "urgency_distribution": urgency_counts,
+        "average_priority_score": avg_priority,
+        "total_points_recommended": total_points,
+        "top_candidates": top_candidates
+    }
+
+    # Update job document with analytics
+    await db.csv_jobs.update_one(
+        {"_id": ObjectId(job_id)},
+        {"$set": {
+            "status": "completed",
+            "processed_rows": processed_rows,
+            "error_rows": error_rows,
+            "error_details": error_details,
+            "output_filename": output_filename,
+            "analytics": analytics_summary
+        }}
+    )
+
+    # Update user stats
+    await db.users.update_one(
+        {"username": job["user"]},
+        {"$inc": {
+            "total_csv_uploads": 1,
+            "total_csv_rows_processed": processed_rows
+        }}
+    )
+
+    # Send email notification
+    if user_email:
+        send_csv_job_complete(
+            user_email, job["user"], job["original_filename"],
+            processed_rows, error_rows, "completed"
+        )
+
+# --- CSV Cleanup Task (runs every hour) ---
+async def csv_cleanup_task():
+    """Deletes expired CSV files but keeps job records (24h TTL)."""
+    while True:
+        await asyncio.sleep(3600)  # Run every hour
+        try:
+            db = get_db()
+            now = datetime.utcnow()
+            # Find jobs that are expired and haven't had their files deleted yet
+            expired_jobs = db.csv_jobs.find({
+                "expires_at": {"$lt": now},
+                "files_deleted": {"$ne": True}
+            })
+            deleted_count = 0
+            async for job in expired_jobs:
+                # Delete input file
+                input_path = os.path.join(CSV_UPLOAD_DIR, job.get("user", ""), job.get("stored_filename", ""))
+                if os.path.exists(input_path):
+                    try:
+                        os.remove(input_path)
+                    except Exception as e:
+                        print(f"[CSV Cleanup] Error removing input file {input_path}: {e}")
+                # Delete output file
+                if job.get("output_filename"):
+                    output_path = os.path.join(CSV_OUTPUT_DIR, job.get("user", ""), job["output_filename"])
+                    if os.path.exists(output_path):
+                        try:
+                            os.remove(output_path)
+                        except Exception as e:
+                            print(f"[CSV Cleanup] Error removing output file {output_path}: {e}")
+                
+                # Mark files as deleted in DB instead of deleting the doc
+                await db.csv_jobs.update_one(
+                    {"_id": job["_id"]},
+                    {"$set": {"files_deleted": True}}
+                )
+                deleted_count += 1
+            if deleted_count > 0:
+                print(f"[CSV Cleanup] Purged physical files for {deleted_count} expired CSV job(s)")
+        except Exception as e:
+            print(f"[CSV Cleanup] Error: {e}")
 
 def strip_html(text: str) -> str:
     return re.sub(r'<[^>]*>', '', text)
@@ -337,9 +678,7 @@ def get_api_key(request: Request):
         raise HTTPException(status_code=401, detail="Missing API Key")
     return auth_header.split(" ")[1]
 
-import asyncio
-import json
-from fastapi.responses import StreamingResponse
+
 
 @app.post("/api/v1/analyze")
 async def dev_analyze(request: Request, body: DevAnalyzeRequest):
@@ -474,12 +813,24 @@ async def get_admin_stats(admin: dict = Depends(verify_admin)):
     total_api_calls = 0
     async for doc in api_calls_cursor:
         total_api_calls = doc.get("total", 0)
+    
+    # CSV stats
+    total_csv_jobs = await db.csv_jobs.count_documents({})
+    csv_completed = await db.csv_jobs.count_documents({"status": "completed"})
+    csv_rows_pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_csv_rows_processed"}}}]
+    csv_rows_cursor = db.users.aggregate(csv_rows_pipeline)
+    total_csv_rows = 0
+    async for doc in csv_rows_cursor:
+        total_csv_rows = doc.get("total", 0)
         
     return {
         "total_web_analyses": total_web_analyses,
         "total_api_analyses": total_api_analyses,
         "total_users": total_users,
-        "total_api_calls_made": total_api_calls
+        "total_api_calls_made": total_api_calls,
+        "total_csv_jobs": total_csv_jobs,
+        "csv_completed": csv_completed,
+        "total_csv_rows_processed": total_csv_rows
     }
 
 @app.get("/api/tbxadmin/users")
@@ -615,6 +966,269 @@ async def update_admin_settings(body: SettingsUpdate, admin: dict = Depends(veri
         upsert=True
     )
     return {"success": True}
+
+# --- CSV BATCH PREDICTION ENDPOINTS ---
+
+@app.post("/api/csv/upload")
+async def csv_upload(request: Request, file: UploadFile = File(...), token_payload: dict = Depends(get_current_user_token)):
+    username = token_payload.get("sub")
+    db = get_db()
+    
+    # Check user exists and is not blocked
+    user = await db.users.find_one({"username": username})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("is_blocked"):
+        raise HTTPException(status_code=403, detail="Account is blocked")
+    
+    # Check daily CSV upload limit
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today_uploads = await db.csv_jobs.count_documents({"user": username, "created_date": today})
+    if today_uploads >= DAILY_CSV_LIMIT:
+        raise HTTPException(status_code=429, detail=f"Daily CSV upload limit reached ({DAILY_CSV_LIMIT}/{DAILY_CSV_LIMIT})")
+    
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are accepted")
+    
+    # Read file content and validate size
+    content = await file.read()
+    if len(content) > MAX_CSV_SIZE:
+        raise HTTPException(status_code=400, detail="File exceeds 10MB limit")
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="File is empty")
+    
+    # Parse CSV to extract columns and validate
+    try:
+        text_content = content.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text_content = content.decode("latin-1")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Unable to decode CSV file. Please use UTF-8 encoding")
+    
+    try:
+        df = pd.read_csv(io.StringIO(text_content))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Unable to parse CSV file: {str(e)[:100]}")
+    
+    if len(df.columns) == 0:
+        raise HTTPException(status_code=400, detail="CSV has no columns")
+    if len(df) == 0:
+        raise HTTPException(status_code=400, detail="CSV has no data rows")
+    if len(df) > MAX_CSV_ROWS:
+        raise HTTPException(status_code=400, detail=f"CSV exceeds {MAX_CSV_ROWS} row limit. Your file has {len(df)} rows")
+    
+    # Save the file
+    user_upload_dir = os.path.join(CSV_UPLOAD_DIR, username)
+    os.makedirs(user_upload_dir, exist_ok=True)
+    stored_filename = f"{uuid.uuid4().hex}.csv"
+    file_path = os.path.join(user_upload_dir, stored_filename)
+    
+    with open(file_path, "wb") as f:
+        f.write(content)
+    
+    # Create job document
+    now = datetime.utcnow()
+    job_doc = {
+        "user": username,
+        "original_filename": file.filename,
+        "stored_filename": stored_filename,
+        "columns": list(df.columns),
+        "row_count": len(df),
+        "status": "uploaded",
+        "selected_column": None,
+        "processed_rows": 0,
+        "error_rows": 0,
+        "error_details": [],
+        "error_message": None,
+        "output_filename": None,
+        "files_deleted": False,
+        "analytics": None,
+        "created_at": now.isoformat() + "Z",
+        "created_date": today,
+        "expires_at": now + timedelta(hours=24)
+    }
+    
+    result = await db.csv_jobs.insert_one(job_doc)
+    job_id = str(result.inserted_id)
+    
+    return {
+        "job_id": job_id,
+        "columns": list(df.columns),
+        "row_count": len(df),
+        "filename": file.filename
+    }
+
+@app.get("/api/csv/{job_id}/preview")
+async def csv_column_preview(job_id: str, column: str, token_payload: dict = Depends(get_current_user_token)):
+    """Preview first 5 rows of a selected column."""
+    username = token_payload.get("sub")
+    db = get_db()
+    
+    try:
+        job = await db.csv_jobs.find_one({"_id": ObjectId(job_id)})
+    except:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="CSV job not found")
+    if job["user"] != username:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if column not in job["columns"]:
+        raise HTTPException(status_code=400, detail=f"Column '{column}' does not exist in the CSV")
+    
+    input_path = os.path.join(CSV_UPLOAD_DIR, username, job["stored_filename"])
+    if not os.path.exists(input_path):
+        raise HTTPException(status_code=500, detail="Input file not found on server")
+    
+    try:
+        df = pd.read_csv(input_path, nrows=5)
+        preview = df[column].fillna("").astype(str).tolist()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read preview: {str(e)[:100]}")
+    
+    return {"column": column, "preview": preview}
+
+@app.post("/api/csv/{job_id}/predict")
+async def csv_predict(job_id: str, request: Request, token_payload: dict = Depends(get_current_user_token)):
+    """Start batch prediction for a CSV job. Queues the job for async processing."""
+    username = token_payload.get("sub")
+    db = get_db()
+    
+    body = await request.json()
+    column = body.get("column")
+    if not column:
+        raise HTTPException(status_code=400, detail="Column name is required")
+    
+    try:
+        job = await db.csv_jobs.find_one({"_id": ObjectId(job_id)})
+    except:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="CSV job not found")
+    if job["user"] != username:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if job["status"] != "uploaded":
+        raise HTTPException(status_code=409, detail="This CSV has already been processed or is currently processing")
+    if column not in job["columns"]:
+        raise HTTPException(status_code=400, detail=f"Column '{column}' does not exist in the CSV")
+    
+    # Validate column has text data
+    input_path = os.path.join(CSV_UPLOAD_DIR, username, job["stored_filename"])
+    if not os.path.exists(input_path):
+        raise HTTPException(status_code=500, detail="Input file not found on server")
+    
+    try:
+        df = pd.read_csv(input_path)
+        non_empty = df[column].dropna().astype(str).str.strip()
+        non_empty = non_empty[non_empty != ""]
+        if len(non_empty) == 0:
+            raise HTTPException(status_code=400, detail="Selected column has no valid text data")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to validate column: {str(e)[:100]}")
+    
+    # Update job with selected column and queue it
+    await db.csv_jobs.update_one(
+        {"_id": ObjectId(job_id)},
+        {"$set": {"selected_column": column, "status": "queued"}}
+    )
+    
+    # Add to processing queue
+    await csv_job_queue.put(job_id)
+    
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": "Job queued for processing. You will receive an email when it completes."
+    }
+
+@app.get("/api/csv/{job_id}/status")
+async def csv_job_status(job_id: str, token_payload: dict = Depends(get_current_user_token)):
+    """Poll the status of a CSV prediction job."""
+    username = token_payload.get("sub")
+    db = get_db()
+    
+    try:
+        job = await db.csv_jobs.find_one({"_id": ObjectId(job_id)})
+    except:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="CSV job not found")
+    if job["user"] != username:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    job["_id"] = str(job["_id"])
+    if "expires_at" in job:
+        job["expires_at"] = job["expires_at"].isoformat() + "Z" if hasattr(job["expires_at"], "isoformat") else str(job["expires_at"])
+    
+    return job
+
+@app.get("/api/csv/{job_id}/download")
+async def csv_download(job_id: str, token_payload: dict = Depends(get_current_user_token)):
+    """Download the output CSV file."""
+    username = token_payload.get("sub")
+    db = get_db()
+    
+    try:
+        job = await db.csv_jobs.find_one({"_id": ObjectId(job_id)})
+    except:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="CSV job not found")
+    if job["user"] != username:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Job has not completed yet")
+    if not job.get("output_filename"):
+        raise HTTPException(status_code=500, detail="Output file not found. It may have expired")
+    
+    output_path = os.path.join(CSV_OUTPUT_DIR, username, job["output_filename"])
+    if not os.path.exists(output_path):
+        raise HTTPException(status_code=500, detail="Output file not found. It may have expired")
+    
+    download_name = job["original_filename"].replace(".csv", "_predictions.csv")
+    return FileResponse(
+        path=output_path,
+        filename=download_name,
+        media_type="text/csv"
+    )
+
+@app.get("/api/csv/history")
+async def csv_history(token_payload: dict = Depends(get_current_user_token)):
+    """Get user's CSV job history."""
+    username = token_payload.get("sub")
+    db = get_db()
+    
+    jobs = []
+    async for job in db.csv_jobs.find({"user": username}).sort("created_at", -1):
+        job["_id"] = str(job["_id"])
+        if "expires_at" in job and hasattr(job["expires_at"], "isoformat"):
+            job["expires_at"] = job["expires_at"].isoformat() + "Z"
+        jobs.append(job)
+    
+    return jobs
+
+# --- ADMIN CSV ENDPOINTS ---
+
+@app.get("/api/tbxadmin/csv-jobs")
+async def get_admin_csv_jobs(admin: dict = Depends(verify_admin)):
+    """Get all CSV jobs across all users for admin view."""
+    db = get_db()
+    jobs = []
+    async for job in db.csv_jobs.find().sort("created_at", -1):
+        job["_id"] = str(job["_id"])
+        if "expires_at" in job and hasattr(job["expires_at"], "isoformat"):
+            job["expires_at"] = job["expires_at"].isoformat() + "Z"
+        jobs.append(job)
+    return jobs
 
 # --- OTHER ENDPOINTS ---
 

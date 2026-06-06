@@ -12,10 +12,10 @@ const Navbar = () => {
   const baseLinks = [
     { name: 'Analyzer', path: '/' },
     { name: 'Research', path: '/research' },
-    { name: 'API Docs', path: '/api-docs' },
   ];
 
   if (user) {
+    baseLinks.push({ name: 'API Docs', path: '/api-docs' });
     if (user.role === 'admin') {
       baseLinks.push({ name: 'Admin Dashboard', path: '/admin' });
     } else {

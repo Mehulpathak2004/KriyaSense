@@ -72,7 +72,19 @@ const Contact = () => {
               <div className="p-3 bg-[var(--color-surface-2)] rounded-full border border-white/10">
                 <Mail className="w-6 h-6 text-[var(--color-brand-primary)]" />
               </div>
-              <span>anurag.pareek@trailblazex.com</span>
+              <div>
+                <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">General & Support</p>
+                <span className="text-white">anurag.pareek@trailblazex.com</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-gray-300">
+              <div className="p-3 bg-[var(--color-surface-2)] rounded-full border border-white/10">
+                <Mail className="w-6 h-6 text-[var(--color-brand-primary)]" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Marketing</p>
+                <span className="text-white">marketing@trailblazex.com</span>
+              </div>
             </div>
           </div>
 

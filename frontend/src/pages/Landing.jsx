@@ -619,8 +619,17 @@ const Landing = () => {
                   <Mail className="w-6 h-6 text-[var(--color-brand-primary)]" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Email Us</p>
+                  <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">General & Support</p>
                   <p className="text-white font-medium">anurag.pareek@trailblazex.com</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-gray-300">
+                <div className="p-3 bg-[var(--color-surface-2)] rounded-full border border-white/10">
+                  <Mail className="w-6 h-6 text-[var(--color-brand-primary)]" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Marketing</p>
+                  <p className="text-white font-medium">marketing@trailblazex.com</p>
                 </div>
               </div>
             </div>

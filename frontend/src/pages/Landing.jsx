@@ -19,7 +19,7 @@ const DEMO_CARDS = [
 const FAQS = [
   { q: "How accurate is the sentiment analysis?", a: "Our KriyaCore engine achieves approximately 74% accuracy on our benchmark dataset, providing reliable sentiment detection across diverse domains." },
   { q: "What models are used in KriyaSense?", a: "We use a dual-model pipeline consisting of KriyaCore for sentiment analysis and KriyaEmo for emotion detection, supplemented by our custom KriyaSense-V1 LLM." },
-  { q: "Can it detect sarcasm?", a: "Yes! We intentionally included sarcastic and mixed-emotion samples in our training dataset of over 5 million rows to help the models understand human communication patterns." },
+  { q: "Can it detect sarcasm?", a: "Yes! We intentionally included sarcastic and mixed-emotion samples in our training dataset of over 25 million rows to help the models understand human communication patterns." },
   { q: "How many emotions can it detect?", a: "Our KriyaEmo system can identify 28 distinct emotional states, mapping unstructured text into granular human feelings." }
 ];
 
@@ -619,16 +619,7 @@ const Landing = () => {
                   <Mail className="w-6 h-6 text-[var(--color-brand-primary)]" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">General & Support</p>
-                  <p className="text-white font-medium">anurag.pareek@trailblazex.com</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 text-gray-300">
-                <div className="p-3 bg-[var(--color-surface-2)] rounded-full border border-white/10">
-                  <Mail className="w-6 h-6 text-[var(--color-brand-primary)]" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Marketing</p>
+                  <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Email Us</p>
                   <p className="text-white font-medium">marketing@trailblazex.com</p>
                 </div>
               </div>

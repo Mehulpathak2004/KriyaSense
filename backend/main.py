@@ -312,7 +312,7 @@ async def _process_csv_job(job_id: str):
             # Offer recommendations
             if priority_pct >= 75:
                 urgency = "Critical"
-                offer = "Refund + 500 Loyalty Points (Immediate Outreach)"
+                offer = "50% Discount Coupon + 500 Loyalty Points (Immediate Outreach)"
                 pts = 500
             elif priority_pct >= 50:
                 urgency = "High"
